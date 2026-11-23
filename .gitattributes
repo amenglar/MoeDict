@@ -1,0 +1,16 @@
+# Normalize text files to LF in the repository
+* text=auto eol=lf
+
+# Binary assets (no diffs, no line-ending conversion)
+*.mdx binary
+*.mdd binary
+*.idx binary
+*.png binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.zip binary
+
+# Generated/tooling text
+*.svg text
+*.lock text

@@ -1,0 +1,31 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Tauri generated files
+src-tauri/gen/
+src-tauri/target/
+
+# Dictionary data: ignored by default, only the sample dictionary is tracked
+*.mdx
+*.mdd
+*.idx
+*.idx.tmp
+*.mdx.db
+*.db
+/mdx/
+/resources/mdx/*
+!/resources/mdx/README.md
+!/resources/mdx/folkets_sv_en.mdx
+
+# Editor / OS
+.idea/
+.DS_Store
+*.Zone.Identifier
+
+# Frontend tooling (not used, but harmless)
+node_modules/
+ui/*.map
+
+# Optional local phonetic font (proprietary, not redistributed)
+/ui/fonts/*

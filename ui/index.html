@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moe 词典</title>
+  <link rel="icon" href="icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-2.6-1.5L14 2h-4l-.4 3a7.7 7.7 0 0 0-2.6 1.5l-2.4-1-2 3.5 2 1.5a7.7 7.7 0 0 0 0 3l-2 1.5 2 3.5 2.4-1a7.7 7.7 0 0 0 2.6 1.5L10 22h4l.4-3a7.7 7.7 0 0 0 2.6-1.5l2.4 1 2-3.5-2-1.5Z"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v9A2.5 2.5 0 0 0 6.5 18H8"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.2l2 2.2H18a2.5 2.5 0 0 1 2.5 2.5v7.8A2.5 2.5 0 0 1 18 20H6a2.5 2.5 0 0 1-2.5-2.5Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6.5 7l.8 12.2A2 2 0 0 0 9.3 21h5.4a2 2 0 0 0 2-1.8L17.5 7M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol>
+    <symbol id="i-top" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6M6 5h12"/></symbol>
+    <symbol id="i-bottom" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6M6 19h12"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h4v18H7a2.5 2.5 0 0 0-2.5 0ZM19.5 5.5A2.5 2.5 0 0 0 17 3h-4v18h4a2.5 2.5 0 0 1 2.5 0Z"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19Z"/><path d="M12 9v5M12 17.2v.3"/></symbol>
+  </svg>
+
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <img class="brand-icon" src="icon.png" alt="" />
+        <div class="brand-text">
+          <strong>Moe 词典</strong>
+          <span>MDX Desktop</span>
+        </div>
+      </div>
+
+      <div class="dict-filter">
+        <svg class="icon"><use href="#i-filter"/></svg>
+        <input id="dict-filter" type="search" placeholder="筛选词典" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="dict-list" id="dict-list" role="list" aria-label="词典列表"></div>
+
+      <div class="dict-empty" id="dict-empty" hidden>
+        <div class="empty-mark"><svg class="icon"><use href="#i-book"/></svg></div>
+        <p>还没有添加词典</p>
+        <button class="btn btn-primary" data-action="pick-files">添加 MDX 文件</button>
+        <button class="btn btn-ghost" data-action="pick-folder">扫描文件夹</button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="settings-btn" class="icon-btn" title="设置 (Ctrl+,)" aria-label="设置">
+          <svg class="icon"><use href="#i-settings"/></svg>
+        </button>
+        <button id="add-btn" class="icon-btn accent" title="添加词典" aria-label="添加词典">
+          <svg class="icon"><use href="#i-plus"/></svg>
+        </button>
+        <span id="dict-summary" class="dict-summary">0 本词典</span>
+        <div id="add-popover" class="popover" hidden>
+          <button data-action="pick-files"><svg class="icon"><use href="#i-book"/></svg>添加 MDX 文件…</button>
+          <button data-action="pick-folder"><svg class="icon"><use href="#i-folder"/></svg>扫描文件夹…</button>
+        </div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <header class="topbar">
+        <div class="history-nav" role="group" aria-label="查询历史导航">
+          <button id="history-back" class="icon-btn" title="上一条查询 (Alt+←)" aria-label="上一条查询" disabled>
+            <svg class="icon"><use href="#i-back"/></svg>
+          </button>
+          <button id="history-forward" class="icon-btn" title="下一条查询 (Alt+→)" aria-label="下一条查询" disabled>
+            <svg class="icon"><use href="#i-forward"/></svg>
+          </button>
+        </div>
+        <div class="search-shell" id="search-shell">
+          <svg class="icon search-icon"><use href="#i-search"/></svg>
+          <input id="search-input" type="text" placeholder="输入单词或短语…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="查询单词" />
+          <button id="clear-btn" class="clear-btn" hidden title="清空" aria-label="清空">
+            <svg class="icon"><use href="#i-x"/></svg>
+          </button>
+          <kbd class="shortcut">Ctrl L</kbd>
+          <div id="suggestions" class="suggestions" hidden role="listbox"></div>
+        </div>
+        <button id="nav-toggle" class="icon-btn nav-toggle" title="显示结果导航 (Ctrl+Shift+N)" aria-label="显示结果导航" aria-pressed="false">
+          <svg class="icon"><use href="#i-book"/></svg>
+        </button>
+      </header>
+
+      <section id="results" class="results">
+        <div id="welcome" class="welcome">
+          <div class="welcome-mark">M</div>
+          <h1>查一个词，读懂世界</h1>
+          <p class="welcome-sub">本地 MDX 词典，离线、轻量，按你的顺序呈现结果。</p>
+          <div id="welcome-actions" class="welcome-actions"></div>
+          <div id="recent" class="recent" hidden>
+            <span class="recent-label">最近查询</span>
+            <div id="recent-list" class="chips"></div>
+            <button id="clear-history" class="link-btn">清空</button>
+          </div>
+        </div>
+
+        <div id="search-loading" class="search-loading" hidden>
+          <span class="spinner"></span>正在查询…
+        </div>
+
+        <div id="results-meta" class="results-meta" hidden></div>
+        <div id="results-list" class="results-list"></div>
+        <div id="no-results" class="no-results" hidden></div>
+      </section>
+
+      <footer class="statusbar">
+        <span id="status-dicts">—</span>
+        <span id="status-index" class="status-index" hidden></span>
+        <span id="status-query" class="status-query"></span>
+      </footer>
+    </main>
+
+    <aside id="result-nav-pane" class="result-nav-pane" aria-label="结果导航">
+      <div class="nav-pane-head">
+        <span>结果导航</span>
+        <button id="nav-pane-close" class="icon-btn" title="收起导航" aria-label="收起导航">
+          <svg class="icon"><use href="#i-x"/></svg>
+        </button>
+      </div>
+      <div id="result-nav" class="result-nav" hidden></div>
+    </aside>
+  </div>
+
+  <div id="drop-overlay" class="drop-overlay" hidden>
+    <div class="drop-card">
+      <svg class="icon"><use href="#i-book"/></svg>
+      <strong>松开以添加 MDX 词典</strong>
+      <span>支持一次拖入多个文件或文件夹</span>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="menu-layer" class="menu-layer" hidden></div>
+  <div id="modal-layer" class="modal-layer" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
