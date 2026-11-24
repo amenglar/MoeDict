@@ -1,7 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/mdict-core", "src-tauri"]
+members = ["crates/mdict-core", "crates/mdict-native", "src-tauri"]
 exclude = ["legacy"]
+
+# xattr 0.2.3 references libc::ENOATTR, removed in libc >= 0.2.190.
+# Local patch keeps the GPUI Linux dependency tree buildable on current toolchains.
+[patch.crates-io]
+xattr = { path = "vendor/xattr" }
 
 [profile.release]
 lto = "thin"

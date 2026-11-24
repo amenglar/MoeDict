@@ -52,6 +52,7 @@ pub fn run() {
             commands::remove_dictionary,
             commands::set_dictionary_enabled,
             commands::rename_dictionary,
+            commands::set_dictionary_tags,
             commands::reorder_dictionaries,
             commands::reindex_dictionary,
             commands::reindex_all,
