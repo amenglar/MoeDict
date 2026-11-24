@@ -93,6 +93,7 @@
   let cardObserver = null;
   let modalKeyHandler = null;
   let currentAudio = null;
+  let focusSeq = 0;
 
   /* ============================== utilities ============================== */
 
@@ -276,6 +277,8 @@ table{max-width:100%;border-collapse:collapse}
 pre{max-width:100%;overflow:auto}
 a{color:var(--doc-link)}
 hr{border:0;border-top:1px solid var(--doc-hr);margin:1em 0}
+.moedict-anchor-target{outline:2px solid var(--doc-link);outline-offset:2px;border-radius:2px;animation:moedict-anchor-hit 1.4s ease-out}
+@keyframes moedict-anchor-hit{0%{background-color:rgba(168,70,42,.16)}100%{background-color:transparent}}
 `;
   }
 
@@ -845,9 +848,11 @@ table,td,th{border-color:var(--doc-hr)!important}
     }
   }
 
-  async function runSearch(rawWord) {
+  async function runSearch(rawWord, rawAnchor = '', rawDictId = '') {
     const word = String(rawWord ?? '').trim();
     if (!word) return;
+    const anchor = String(rawAnchor || '');
+    const anchorDict = String(rawDictId || '');
 
     clearTimeout(suggestTimer);
     state.suggestSeq += 1;
@@ -857,6 +862,7 @@ table,td,th{border-color:var(--doc-hr)!important}
     toggleClearBtn();
 
     const seq = ++state.querySeq;
+    focusSeq += 1;
     state.query = word;
     state.hits = [];
     clearObservers();
@@ -879,12 +885,35 @@ table,td,th{border-color:var(--doc-hr)!important}
       const list = Array.isArray(hits) ? hits : [];
       state.hits = list;
       renderResults(list, word, elapsed);
+      if (anchor) applyEntryAnchor(anchor, anchorDict);
     } catch (error) {
       if (seq !== state.querySeq) return;
       showNoResults(word, performance.now() - started, `查询失败：${error}`);
     } finally {
-      if (seq === state.querySeq) el.searchLoading.hidden = true;
+      if (seq === state.querySeq) {
+        el.searchLoading.hidden = true;
+        // Keep the box ready for the next word: select the query when the
+        // search was issued from the input itself.
+        if (document.activeElement === el.searchInput && el.searchInput.value === word) {
+          el.searchInput.select();
+        }
+      }
     }
+  }
+
+  function applyEntryAnchor(anchor, dictId) {
+    if (!anchor) return;
+    const cards = $$('.result-card', el.resultsList);
+    if (!cards.length) return;
+    const card =
+      (dictId && cards.find((item) => item.dataset.dictId === dictId)) || cards[0];
+    if (card.classList.contains('collapsed')) {
+      card.classList.remove('collapsed');
+      card.querySelector('[data-action="collapse"]')?.setAttribute('aria-expanded', 'true');
+    }
+    ensureFrame(card).then(() => {
+      if (card.isConnected) scrollToEntryAnchor(card, anchor);
+    });
   }
 
   function renderResults(hits, word, elapsed) {
@@ -941,7 +970,7 @@ table,td,th{border-color:var(--doc-hr)!important}
     const all = document.createElement('button');
     all.className = 'nav-chip nav-all';
     all.textContent = `全部 ${hits.length}`;
-    all.addEventListener('click', () => el.results.scrollTo({ top: 0, behavior: 'smooth' }));
+    all.addEventListener('click', () => scrollResultsTo(0));
     el.resultNav.append(all);
 
     for (const hit of hits) {
@@ -1169,7 +1198,7 @@ table,td,th{border-color:var(--doc-hr)!important}
       'load',
       () => {
         card._frame = iframe;
-        bindFrame(iframe, hit);
+        bindFrame(iframe, hit, card);
         const observer = sizeFrame(card, iframe);
         if (observer) state.frameObservers.add(observer);
         card._resolveFrame?.(iframe);
@@ -1252,30 +1281,44 @@ table,td,th{border-color:var(--doc-hr)!important}
     return observer;
   }
 
-  function bindFrame(iframe, hit) {
+  function bindFrame(iframe, hit, card) {
     const doc = iframe.contentDocument;
     if (!doc) return;
 
     doc.addEventListener(
       'click',
       (event) => {
-        const target = event.target.closest?.('a, [data-sound]');
+        const target = event.target.closest?.('a, area, [data-sound]');
         if (!target) return;
-        const sound = target.dataset.sound;
+
+        const sound = target.dataset?.sound;
         if (sound) {
           event.preventDefault();
           playSound(hit.dictId, sound);
           return;
         }
-        const link = target.closest?.('a');
-        if (!link) return;
-        const entry = link.dataset.entry;
+
+        const entry = target.dataset?.entry;
         if (entry) {
           event.preventDefault();
-          runSearch(decodeSafe(entry.split('#')[0]));
+          const anchor = target.dataset?.entryAnchor || '';
+          const word = decodeSafe(entry);
+          // `entry://current-word#anchor` is a same-entry jump in disguise.
+          if (anchor && word.toLowerCase() === state.query.toLowerCase() && card?._frame) {
+            scrollToEntryAnchor(card, anchor);
+            return;
+          }
+          runSearch(word, anchor, target.dataset?.entryDict || '');
           return;
         }
-        const external = link.dataset.external;
+
+        if (target.hasAttribute?.('data-anchor')) {
+          event.preventDefault();
+          scrollToEntryAnchor(card, target.getAttribute('data-anchor') || '');
+          return;
+        }
+
+        const external = target.dataset?.external;
         if (external) {
           event.preventDefault();
           invoke('open_external', { url: external }).catch((error) =>
@@ -1283,8 +1326,15 @@ table,td,th{border-color:var(--doc-hr)!important}
           );
           return;
         }
-        const href = link.getAttribute('href') || '';
-        if (!href.startsWith('#')) event.preventDefault();
+
+        // Nothing else may navigate the frame: srcdoc content inherits the
+        // app's base URL, so `#fragment` and relative hrefs would replace the
+        // entry with the app's own page.
+        event.preventDefault();
+        const href = target.getAttribute?.('href') || '';
+        if (href.startsWith('#')) {
+          scrollToEntryAnchor(card, decodeSafe(href.slice(1)));
+        }
       },
       true
     );
@@ -1353,6 +1403,113 @@ table,td,th{border-color:var(--doc-hr)!important}
     toast(ok ? '已复制释义' : '复制失败', ok ? 'success' : 'error', 2000);
   }
 
+  let resultsScrollFrame = 0;
+
+  function prefersReducedMotion() {
+    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+  }
+
+  function cancelResultsScroll() {
+    if (!resultsScrollFrame) return;
+    cancelAnimationFrame(resultsScrollFrame);
+    resultsScrollFrame = 0;
+  }
+
+  /// Scrolls the results pane with a fixed duration so a jump between distant
+  /// cards never stretches into a multi-second animation.
+  function scrollResultsTo(top, { smooth = true, duration = 260 } = {}) {
+    const scroller = el.results;
+    if (!scroller) return;
+    cancelResultsScroll();
+    const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const target = Math.min(Math.max(0, Math.round(top)), max);
+    const start = scroller.scrollTop;
+    const delta = target - start;
+    if (!smooth || prefersReducedMotion() || Math.abs(delta) < 2) {
+      scroller.scrollTop = target;
+      return;
+    }
+    const began = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - began) / duration);
+      const eased = t * t * (3 - 2 * t);
+      scroller.scrollTop = start + delta * eased;
+      if (t < 1) {
+        resultsScrollFrame = requestAnimationFrame(step);
+      } else {
+        resultsScrollFrame = 0;
+      }
+    };
+    resultsScrollFrame = requestAnimationFrame(step);
+  }
+
+  function findAnchorNode(doc, anchor) {
+    if (!doc || !anchor) return null;
+    let node = doc.getElementById(anchor);
+    if (node) return node;
+    const named = doc.getElementsByName?.(anchor);
+    if (named?.length) return named[0];
+    // Legacy dictionaries sometimes differ only by case, or use `<a name>`.
+    const wanted = anchor.toLowerCase();
+    for (const candidate of doc.querySelectorAll('[id],[name]')) {
+      const value =
+        candidate.getAttribute('id') || candidate.getAttribute('name') || '';
+      if (value.toLowerCase() === wanted) return candidate;
+    }
+    return null;
+  }
+
+  function flashAnchor(node) {
+    if (!node?.classList) return;
+    node.classList.remove('moedict-anchor-target');
+    void node.offsetWidth;
+    node.classList.add('moedict-anchor-target');
+    setTimeout(() => node.classList.remove('moedict-anchor-target'), 1400);
+  }
+
+  /// Jumps to a named anchor inside an entry frame.  An empty or unknown
+  /// anchor means the top of the entry (the usual "top" navigation link).
+  function scrollToEntryAnchor(card, anchor) {
+    if (!card) return;
+    const body = card.querySelector('.result-body');
+    if (body?.classList.contains('tall')) {
+      body.querySelector('.expand-btn')?.click();
+    }
+    const frame = card._frame;
+    const doc = frame?.contentDocument;
+
+    // Keep the frame's `:target` state in sync without letting the frame
+    // navigate: some dictionaries show/hide sections purely through CSS.
+    try {
+      const win = frame?.contentWindow;
+      if (win) {
+        const next = anchor ? `#${anchor}` : '';
+        if (win.location.hash !== next) win.location.hash = next;
+      }
+    } catch {
+      /* ignore: fall back to a plain scroll */
+    }
+
+    requestAnimationFrame(() => {
+      if (!card.isConnected) return;
+      const node = findAnchorNode(doc, anchor);
+      let offset = 0;
+      if (node && frame) {
+        const frameRect = frame.getBoundingClientRect();
+        const nodeRect = node.getBoundingClientRect();
+        offset = Math.max(0, nodeRect.top - frameRect.top);
+        flashAnchor(node);
+      }
+      const top =
+        card.getBoundingClientRect().top -
+        el.results.getBoundingClientRect().top +
+        el.results.scrollTop +
+        offset -
+        12;
+      scrollResultsTo(top);
+    });
+  }
+
   async function waitForStableLayout(cards) {
     let last = -1;
     let stable = 0;
@@ -1370,6 +1527,7 @@ table,td,th{border-color:var(--doc-hr)!important}
   }
 
   async function focusDictionary(id) {
+    const seq = ++focusSeq;
     const cards = $$('.result-card', el.resultsList);
     const index = cards.findIndex((item) => item.dataset.dictId === id);
     if (index < 0) {
@@ -1389,12 +1547,14 @@ table,td,th{border-color:var(--doc-hr)!important}
     } catch {
       /* scrolling still works with partially loaded frames */
     }
+    // A newer jump or query may have won while frames were loading.
+    if (seq !== focusSeq || !card.isConnected) return;
     const top =
       card.getBoundingClientRect().top -
       el.results.getBoundingClientRect().top +
       el.results.scrollTop -
       8;
-    el.results.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    scrollResultsTo(top);
     card.classList.remove('flash');
     void card.offsetWidth;
     card.classList.add('flash');
@@ -1428,7 +1588,7 @@ table,td,th{border-color:var(--doc-hr)!important}
       link.remove();
     });
 
-    rewriteLinks(doc);
+    rewriteLinks(doc, dictId);
     rewriteResources(doc, dictId);
 
     const body = doc.body ? doc.body.innerHTML : '';
@@ -1499,8 +1659,31 @@ table,td,th{border-color:var(--doc-hr)!important}
     }
   }
 
-  function rewriteLinks(doc) {
-    doc.querySelectorAll('a[href]').forEach((link) => {
+  /// Splits an `entry://` target into entry name and `#fragment`.
+  ///
+  /// Some MDX builders percent-encode the delimiter (`entry://%23_hkn3`),
+  /// which used to be mistaken for an entry named "#_hkn3".
+  function splitEntryHref(value) {
+    const hash = value.indexOf('#');
+    if (hash >= 0) {
+      return {
+        target: decodeSafe(value.slice(0, hash)),
+        anchor: decodeSafe(value.slice(hash + 1)),
+      };
+    }
+    const encoded = value.search(/%23/i);
+    if (encoded >= 0) {
+      const target = decodeSafe(value.slice(0, encoded));
+      const anchor = decodeSafe(value.slice(encoded + 3));
+      // `word%23anchor` is an anchor link; `C%23` is a headword.
+      if (!target || anchor) return { target, anchor };
+    }
+    return { target: decodeSafe(value), anchor: '' };
+  }
+
+  function rewriteLinks(doc, dictId) {
+    // `<area>` links (image maps) are common in cover/navigation pages.
+    doc.querySelectorAll('a[href], area[href]').forEach((link) => {
       const href = stripControls(link.getAttribute('href') || '');
       if (!href) {
         link.removeAttribute('href');
@@ -1508,17 +1691,19 @@ table,td,th{border-color:var(--doc-hr)!important}
       }
       const entry = href.match(/^entry:\/\/(.*)$/i);
       if (entry) {
-        const target = decodeSafe(entry[1].split('#')[0]);
-        if (target.startsWith('#')) {
-          link.setAttribute('href', target);
+        const { target, anchor } = splitEntryHref(entry[1]);
+        if (!target) {
+          setAnchor(link, anchor);
           return;
         }
         const word = target.replace(/:[A-Za-z0-9_ ]+$/, '');
         if (!word) {
-          link.setAttribute('href', '#');
+          setAnchor(link, anchor);
           return;
         }
         link.dataset.entry = word;
+        if (anchor) link.dataset.entryAnchor = anchor;
+        link.dataset.entryDict = dictId;
         link.setAttribute('href', '#');
         return;
       }
@@ -1534,7 +1719,10 @@ table,td,th{border-color:var(--doc-hr)!important}
         link.setAttribute('rel', 'noopener noreferrer');
         return;
       }
-      if (href.startsWith('#')) return;
+      if (href.startsWith('#')) {
+        setAnchor(link, decodeSafe(href.slice(1)));
+        return;
+      }
       if (/^javascript:/i.test(href)) {
         link.removeAttribute('href');
         return;
@@ -1544,12 +1732,27 @@ table,td,th{border-color:var(--doc-hr)!important}
         return;
       }
       if (!/[\\/:]/.test(href)) {
-        link.dataset.entry = decodeSafe(href.split('#')[0]);
+        const { target, anchor } = splitEntryHref(href);
+        if (!target) {
+          setAnchor(link, anchor);
+          return;
+        }
+        link.dataset.entry = target;
+        if (anchor) link.dataset.entryAnchor = anchor;
+        link.dataset.entryDict = dictId;
         link.setAttribute('href', '#');
         return;
       }
       link.removeAttribute('href');
     });
+
+    // Fragment links are handled by the host frame: `srcdoc` documents
+    // inherit the app's base URL, so a raw `#fragment`/`href="#"` click would
+    // navigate the entry frame to the whole app page.
+    function setAnchor(link, anchor) {
+      link.dataset.anchor = anchor;
+      link.setAttribute('href', '#');
+    }
   }
 
   function rewriteResources(doc, dictId) {
@@ -2128,6 +2331,9 @@ table,td,th{border-color:var(--doc-hr)!important}
     el.settingsBtn.addEventListener('click', settingsDialog);
 
     el.results.addEventListener('scroll', scheduleNavUpdate, { passive: true });
+    for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+      el.results.addEventListener(type, cancelResultsScroll, { passive: true });
+    }
 
     el.addBtn.addEventListener('click', (event) => {
       event.stopPropagation();

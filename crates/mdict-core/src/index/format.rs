@@ -13,6 +13,10 @@ pub const RECORD_SIZE: usize = 32;
 const FLAG_COMPRESSED: u32 = 1;
 const MAX_ENTRIES: u64 = 100_000_000;
 const MAX_DEF_SIZE: u32 = 256 * 1024 * 1024;
+/// How many `@@@LINK=` hops are followed before giving up (guards against
+/// redirect cycles in malformed dictionaries).
+const MAX_REDIRECT_DEPTH: usize = 8;
+const REDIRECT_PREFIX: &str = "@@@LINK=";
 
 #[derive(Debug, Clone)]
 pub struct IndexHeader {
@@ -78,6 +82,34 @@ pub fn read_index_header(path: &Path) -> Result<IndexHeader> {
     let mut buf = [0u8; HEADER_SIZE];
     file.read_exact(&mut buf)?;
     IndexHeader::decode(&buf)
+}
+
+/// Extracts the target of an `@@@LINK=target` entry.
+///
+/// Some converters wrap the marker in a paragraph tag, and targets may carry a
+/// trailing fragment or extra lines; all of those are tolerated.
+fn redirect_target(definition: &str) -> Option<String> {
+    let text = definition.trim().trim_start_matches('\u{feff}').trim();
+    let text = text
+        .strip_prefix("<p>")
+        .and_then(|inner| inner.strip_suffix("</p>"))
+        .map(str::trim)
+        .unwrap_or(text);
+    let prefix = text.get(..REDIRECT_PREFIX.len())?;
+    if !prefix.eq_ignore_ascii_case(REDIRECT_PREFIX) {
+        return None;
+    }
+    let target = text[REDIRECT_PREFIX.len()..]
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim();
+    let target = target.split('#').next().unwrap_or("").trim();
+    if target.is_empty() {
+        None
+    } else {
+        Some(target.to_string())
+    }
 }
 
 /// A read-only, memory-mapped dictionary index.
@@ -147,7 +179,36 @@ impl IndexFile {
 
     /// Case-insensitive exact lookup.  Prefers a case-exact match when several
     /// keys differ only by case.
+    ///
+    /// MDX dictionaries store forward-only entries as `@@@LINK=target`; these
+    /// are followed here so callers always receive real article HTML.  The
+    /// returned headword stays the key the user actually matched.
     pub fn exact(&self, word: &str) -> Result<Option<(String, String)>> {
+        let Some(index) = self.find_index(word)? else {
+            return Ok(None);
+        };
+        let headword = self.key(index)?.to_string();
+        let mut html = self.definition(index)?;
+        let mut visited = vec![index];
+        for _ in 0..MAX_REDIRECT_DEPTH {
+            let Some(target) = redirect_target(&html) else {
+                break;
+            };
+            let Some(next) = self.find_index(&target)? else {
+                break;
+            };
+            // Entries are identified by position: case variants such as
+            // "buch" -> "Buch" are distinct entries, not a cycle.
+            if visited.contains(&next) {
+                break;
+            }
+            visited.push(next);
+            html = self.definition(next)?;
+        }
+        Ok(Some((headword, html)))
+    }
+
+    fn find_index(&self, word: &str) -> Result<Option<usize>> {
         let word = word.trim().trim_start_matches('\u{feff}').trim();
         if word.is_empty() || self.is_empty() {
             return Ok(None);
@@ -161,20 +222,14 @@ impl IndexFile {
                 break;
             }
             if key == word {
-                return Ok(Some((key.to_string(), self.definition(index)?)));
+                return Ok(Some(index));
             }
             if fallback.is_none() {
                 fallback = Some(index);
             }
             index += 1;
         }
-        match fallback {
-            Some(index) => Ok(Some((
-                self.key(index)?.to_string(),
-                self.definition(index)?,
-            ))),
-            None => Ok(None),
-        }
+        Ok(fallback)
     }
 
     pub fn prefix(&self, prefix: &str, limit: usize) -> Result<Vec<String>> {

@@ -61,7 +61,8 @@ record = key_off u64 | key_len u32 | def_off u64 | def_len u32 | raw_len u32 | f
   Windows while a query may still map the old file).
 - `IndexFile` mmaps the file and answers exact/prefix/random lookups. `exact`
   prefers a case-exact match, then falls back to the first case-insensitive
-  match.
+  match; it also follows `@@@LINK=target` redirect entries (depth-limited,
+  cycle-safe, fragment stripped) and keeps the queried key as the headword.
 - Bump `FORMAT_VERSION` when changing the layout; stale versions are rebuilt.
 
 ### Registry (`crates/mdict-core/src/registry.rs`)
@@ -106,7 +107,14 @@ No bundler and no framework. `window.__TAURI__` is available because
 - Rendering: each hit is sanitized with `DOMParser`, wrapped in a full HTML
   document and put in an `<iframe sandbox="allow-same-origin">` (scripts cannot
   run). CSS/JS/URL rewriting:
-  - `entry://` and bare links → `data-entry` (search internally);
+  - `entry://` and bare links → `data-entry` (search internally), with the
+    `#fragment` kept as `data-entry-anchor`;
+  - `#fragment` anchors (including percent-encoded `entry://%23anchor`, and
+    `<area>` image maps) → `data-anchor`, scrolled by the host; `href="#"`/
+    unknown anchors mean the top of the entry. Decode before splitting on `#`
+    (OLCC writes `entry://%23_hkn3` for `entry://#_hkn3`). `srcdoc` frames
+    inherit the app's base URL, so any unhandled fragment/relative navigation
+    would load the app page inside the entry frame — always `preventDefault`;
   - `sound://` → `data-sound` (audio playback via fetch + Blob);
   - `http(s)://` → `data-external` (OS opener, only http/https/mailto);
   - relative/`file:///` → `mdict://` resource URLs;
@@ -115,6 +123,10 @@ No bundler and no framework. `window.__TAURI__` is available because
 - `xlink:href` cannot be used in a CSS selector — handle it manually.
 - Iframes are loaded lazily with `IntersectionObserver`; heights track a
   `ResizeObserver`; entries taller than 1500px get a "展开全文" control.
+- Result-pane jumps (sidebar/nav chips and entry anchors) go through
+  `scrollResultsTo`, which caps the animation at a fixed ~260ms. Do not put
+  `scroll-behavior: smooth` on `.results`: the browser's distance-based
+  animation takes seconds on long entries.
 - Dictionary order matters for result order. Filtering the sidebar disables
   drag reorder.
 - UI state (history) lives in `localStorage`; settings live in the core config.

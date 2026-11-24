@@ -885,7 +885,6 @@ button {
   min-height: 0;
   overflow-y: auto;
   padding: 2px 28px 44px;
-  scroll-behavior: smooth;
 }
 
 .welcome {
@@ -1966,9 +1965,5 @@ button {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-  }
-
-  .results {
-    scroll-behavior: auto;
   }
 }

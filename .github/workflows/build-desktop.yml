@@ -1,0 +1,53 @@
+name: build-desktop
+
+# Manual runs and tag pushes only; ordinary branch pushes do not build.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build_target: x86_64-pc-windows-msvc
+            rust_targets: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: moedict-windows-x64
+          # Universal (Apple Silicon + Intel) macOS bundle.
+          - os: macos-latest
+            build_target: universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            bundles: dmg
+            artifact: moedict-macos-universal
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: swatinem/rust-cache@v2
+
+      # Builds and bundles with the Tauri CLI; no signing certificates are
+      # configured, so Windows SmartScreen and macOS Gatekeeper will warn.
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          args: --target ${{ matrix.build_target }} --bundles ${{ matrix.bundles }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.build_target }}/release/bundle/**
+          if-no-files-found: error
+          retention-days: 30

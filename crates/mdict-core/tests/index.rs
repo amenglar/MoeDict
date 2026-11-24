@@ -69,6 +69,43 @@ fn index_roundtrip() {
 }
 
 #[test]
+fn index_follows_link_redirects() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("links.idx");
+    let mut builder = IndexBuilder::new(dir.path(), 1, 1).unwrap();
+    builder.add("Buch", b"<p><b>Buch</b> book</p>").unwrap();
+    builder.add("buch", b"@@@LINK=Buch").unwrap();
+    builder.add("Buchstabe", b"letter").unwrap();
+    builder.add("wrapped", b"<p>@@@LINK=Buchstabe</p>").unwrap();
+    builder.add("chained", b"@@@LINK=buch\r\n").unwrap();
+    builder.add("loopA", b"@@@LINK=loopB").unwrap();
+    builder.add("loopB", b"@@@LINK=loopA").unwrap();
+    builder.add("dangling", b"@@@LINK=missing").unwrap();
+    builder.finish(&path).unwrap();
+
+    let index = IndexFile::open(&path).unwrap();
+
+    let (key, html) = index.exact("buch").unwrap().unwrap();
+    assert_eq!(key, "buch");
+    assert!(html.contains("book"));
+    assert!(!html.contains("@@@LINK"));
+
+    let (_, html) = index.exact("wrapped").unwrap().unwrap();
+    assert_eq!(html, "letter");
+
+    // Redirects are followed transitively, and case fallbacks still apply.
+    let (_, html) = index.exact("chained").unwrap().unwrap();
+    assert!(html.contains("book"));
+
+    // Cycles terminate and return whatever was resolved last.
+    assert!(index.exact("loopA").unwrap().is_some());
+
+    // Dangling targets keep the raw marker rather than dropping the entry.
+    let (_, html) = index.exact("dangling").unwrap().unwrap();
+    assert!(html.contains("@@@LINK"));
+}
+
+#[test]
 fn index_handles_duplicate_headwords() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("dup.idx");
