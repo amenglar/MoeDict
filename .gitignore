@@ -1,0 +1,27 @@
+# Rust
+/target
+/legacy/target
+**/*.rs.bk
+
+# Tauri generated files
+src-tauri/gen/
+src-tauri/target/
+
+# Dictionary data and generated indexes
+*.mdx
+*.mdd
+*.idx
+*.idx.tmp
+*.mdx.db
+*.db
+mdx/
+resources/mdx/
+
+# Editor / OS
+.idea/
+.DS_Store
+*.Zone.Identifier
+
+# Frontend tooling (not used, but harmless)
+node_modules/
+ui/*.map

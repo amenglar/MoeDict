@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MoeDict",
+  "version": "0.1.0",
+  "identifier": "moe.mdict",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Moe 词典",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 880,
+        "minHeight": 560,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' mdict: http://mdict.localhost; img-src 'self' data: blob: mdict: http://mdict.localhost; media-src 'self' blob: mdict: http://mdict.localhost; font-src 'self' data: mdict: http://mdict.localhost; connect-src 'self' ipc: http://ipc.localhost mdict: http://mdict.localhost; frame-src 'self' data: about:; child-src 'self' data: about:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Reference",
+    "shortDescription": "轻量级 MDX 桌面词典",
+    "longDescription": "MoeDict 是一个基于 MDX 格式的桌面词典，支持词典路径管理、排序、筛选、索引进度与 MDD 图片/发音资源。",
+    "copyright": "© zhi.moe"
+  }
+}
