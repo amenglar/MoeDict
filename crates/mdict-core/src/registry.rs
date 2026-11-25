@@ -7,15 +7,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::audio;
 use crate::error::{Error, Result};
 use crate::index::{
     FORMAT_VERSION, IndexBuilder, IndexFile, IndexProgress, IndexStats, read_index_header,
 };
 use crate::mdd::MddSet;
 use crate::mdict::{Mdict, read_title};
-use crate::util::{
-    clean_resource_path, display_path, hash_id, mime_type, path_is_within, unix_millis,
-};
+use crate::util::{clean_resource_path, display_path, hash_id, path_is_within, unix_millis};
 
 const CONFIG_VERSION: u32 = 1;
 const INDEX_CACHE_SIZE: usize = 8;
@@ -89,6 +88,8 @@ pub struct DictionaryConfig {
     pub indexed_at: Option<i64>,
     #[serde(default)]
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -116,6 +117,7 @@ pub struct DictionaryInfo {
     pub indexed_at: Option<i64>,
     pub error: Option<String>,
     pub has_mdd: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -423,6 +425,7 @@ impl DictionaryStore {
                     entry_count,
                     indexed_at,
                     last_error: None,
+                    tags: Vec::new(),
                 };
                 next_order += 1;
                 existing.insert(path);
@@ -490,6 +493,37 @@ impl DictionaryStore {
         self.save_locked(&inner)
     }
 
+    pub fn set_tags(&self, id: &str, tags: &[String]) -> Result<()> {
+        let mut unique: Vec<String> = Vec::new();
+        for tag in tags {
+            let tag: String = tag.trim().chars().take(24).collect();
+            if !tag.is_empty() && !unique.contains(&tag) {
+                unique.push(tag);
+            }
+        }
+        unique.truncate(8);
+        let mut inner = self.inner.write().unwrap();
+        let dict = inner
+            .dicts
+            .iter_mut()
+            .find(|d| d.id == id)
+            .ok_or_else(|| Error::NotFound(format!("词典 {id}")))?;
+        dict.tags = unique;
+        self.save_locked(&inner)
+    }
+
+    pub fn all_tags(&self) -> Vec<String> {
+        let inner = self.inner.read().unwrap();
+        let mut tags: Vec<String> = inner
+            .dicts
+            .iter()
+            .flat_map(|dict| dict.tags.iter().cloned())
+            .collect();
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
     pub fn reorder(&self, ids: &[String]) -> Result<()> {
         let mut inner = self.inner.write().unwrap();
         let positions: HashMap<&str, usize> = ids
@@ -537,11 +571,15 @@ impl DictionaryStore {
     }
 
     pub fn query(&self, word: &str) -> Vec<QueryHit> {
+        self.query_with_tags(word, &[])
+    }
+
+    pub fn query_with_tags(&self, word: &str, tags: &[String]) -> Vec<QueryHit> {
         let word = word.trim();
         if word.is_empty() {
             return Vec::new();
         }
-        let dicts = self.enabled_dicts();
+        let dicts = self.enabled_dicts_for(tags);
         let mut hits = Vec::new();
         for cfg in dicts {
             match self.open_index(&cfg.id).and_then(|index| index.exact(word)) {
@@ -560,17 +598,22 @@ impl DictionaryStore {
     }
 
     pub fn suggest(&self, prefix: &str) -> Vec<Suggestion> {
+        self.suggest_with_tags(prefix, &[])
+    }
+
+    pub fn suggest_with_tags(&self, prefix: &str, tags: &[String]) -> Vec<Suggestion> {
         let prefix = prefix.trim();
         if prefix.is_empty() {
             return Vec::new();
         }
-        let (dicts, limit) = {
-            let inner = self.inner.read().unwrap();
-            let mut dicts: Vec<DictionaryConfig> =
-                inner.dicts.iter().filter(|d| d.enabled).cloned().collect();
-            dicts.sort_by_key(|d| d.order);
-            (dicts, inner.settings.suggestion_limit.clamp(1, 50))
-        };
+        let dicts = self.enabled_dicts_for(tags);
+        let limit = self
+            .inner
+            .read()
+            .unwrap()
+            .settings
+            .suggestion_limit
+            .clamp(1, 50);
 
         let per_dict = 8;
         let mut out: Vec<Suggestion> = Vec::new();
@@ -602,7 +645,11 @@ impl DictionaryStore {
     }
 
     pub fn lucky(&self) -> Option<String> {
-        let dicts = self.enabled_dicts();
+        self.lucky_with_tags(&[])
+    }
+
+    pub fn lucky_with_tags(&self, tags: &[String]) -> Option<String> {
+        let dicts = self.enabled_dicts_for(tags);
         if dicts.is_empty() {
             return None;
         }
@@ -722,7 +769,7 @@ impl DictionaryStore {
             if let Ok(canonical) = fs::canonicalize(&candidate) {
                 if canonical.is_file() && path_is_within(&dict_dir, &canonical) {
                     let bytes = fs::read(&canonical)?;
-                    return Ok(Some((bytes, mime_type(variant))));
+                    return Ok(Some(audio::playable(bytes, variant)));
                 }
             }
         }
@@ -734,7 +781,7 @@ impl DictionaryStore {
         let set = self.open_mdd(&cfg.id, &mdd_paths)?;
         for variant in resource_variants(&normalized) {
             if let Some(bytes) = set.read(&variant)? {
-                return Ok(Some((bytes, mime_type(&variant))));
+                return Ok(Some(audio::playable(bytes, &variant)));
             }
         }
         Ok(None)
@@ -745,6 +792,17 @@ impl DictionaryStore {
         let mut dicts: Vec<DictionaryConfig> =
             inner.dicts.iter().filter(|d| d.enabled).cloned().collect();
         dicts.sort_by_key(|d| d.order);
+        dicts
+    }
+
+    fn enabled_dicts_for(&self, tags: &[String]) -> Vec<DictionaryConfig> {
+        let mut dicts = self.enabled_dicts();
+        if !tags.is_empty() {
+            dicts.retain(|dict| {
+                tags.iter()
+                    .any(|tag| dict.tags.iter().any(|item| item == tag))
+            });
+        }
         dicts
     }
 
@@ -768,6 +826,7 @@ impl DictionaryStore {
             indexed_at,
             error: cfg.last_error.clone(),
             has_mdd: !self.find_mdd_paths(cfg).is_empty(),
+            tags: cfg.tags.clone(),
         }
     }
 

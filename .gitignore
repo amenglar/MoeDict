@@ -27,5 +27,6 @@ src-tauri/target/
 node_modules/
 ui/*.map
 
-# Optional local phonetic font (proprietary, not redistributed)
+# Phonetic font used by entry rendering
 /ui/fonts/*
+!/ui/fonts/KingsoftPhoneticPlain.ttf

@@ -26,12 +26,14 @@
   const HISTORY_KEY = 'moedict.history.v1';
   const CONTENT_THEME_KEY = 'moedict.contentTheme.v1';
   const NAV_PANE_KEY = 'moedict.navPane.v1';
+  const SIDEBAR_KEY = 'moedict.sidebar.v1';
   const TALL_THRESHOLD = 1500;
 
   const el = {
     dictList: $('#dict-list'),
     dictEmpty: $('#dict-empty'),
     dictFilter: $('#dict-filter'),
+    dictTags: $('#dict-tags'),
     dictSummary: $('#dict-summary'),
     addBtn: $('#add-btn'),
     addPopover: $('#add-popover'),
@@ -44,6 +46,8 @@
     navToggle: $('#nav-toggle'),
     navPane: $('#result-nav-pane'),
     navPaneClose: $('#nav-pane-close'),
+    sidebarToggle: $('#sidebar-toggle'),
+    sidebarReveal: $('#sidebar-reveal'),
     suggestions: $('#suggestions'),
     welcome: $('#welcome'),
     welcomeActions: $('#welcome-actions'),
@@ -76,6 +80,7 @@
     suggestions: [],
     suggestionIndex: -1,
     filter: '',
+    tagFilter: '',
     indexing: new Map(),
     dragId: null,
     history: [],
@@ -83,6 +88,7 @@
     navIndex: -1,
     navigating: false,
     navPaneOpen: true,
+    sidebarOpen: true,
     querySeq: 0,
     suggestSeq: 0,
     frameObservers: new Set(),
@@ -257,6 +263,29 @@
     }
   }
 
+  function loadSidebar() {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function setSidebar(open) {
+    state.sidebarOpen = Boolean(open);
+    $('#app').classList.toggle('without-sidebar', !state.sidebarOpen);
+    el.sidebarToggle.setAttribute('aria-pressed', String(state.sidebarOpen));
+    el.sidebarReveal.hidden = state.sidebarOpen;
+    const title = state.sidebarOpen ? '隐藏词典侧栏 (Ctrl+B)' : '显示词典侧栏 (Ctrl+B)';
+    el.sidebarToggle.title = title;
+    el.sidebarToggle.setAttribute('aria-label', title);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, state.sidebarOpen ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
   function baseCss() {
     const size = Number(state.settings.fontSize) || 16;
     const phoneticFont = new URL('fonts/KingsoftPhoneticPlain.ttf', window.location.href).href;
@@ -419,17 +448,29 @@ table,td,th{border-color:var(--doc-hr)!important}
     }
   }
 
+  function isDictFiltered() {
+    return Boolean(state.filter.trim() || state.tagFilter);
+  }
+
+  function activeTags() {
+    return state.tagFilter ? [state.tagFilter] : [];
+  }
+
   function dictRow(dict) {
     const row = document.createElement('div');
     row.className = 'dict-row' + (dict.enabled ? '' : ' muted-dict');
     row.dataset.id = dict.id;
     row.setAttribute('role', 'listitem');
     row.tabIndex = 0;
-    row.draggable = state.dicts.length > 1;
+    row.draggable = false;
     if (state.indexing.has(dict.id)) row.classList.add('indexing');
 
+    const tags = Array.isArray(dict.tags) ? dict.tags : [];
+    const tagsLine = tags.length
+      ? `<div class="dict-tags-line">${tags.map(() => '<span class="dict-tag"></span>').join('')}</div>`
+      : '';
     row.innerHTML = `
-      <span class="dict-drag" title="拖动排序">${icon('grip')}</span>
+      <span class="dict-drag" data-role="drag" title="拖动排序">${icon('grip')}</span>
       <input class="dict-check" type="checkbox" ${dict.enabled ? 'checked' : ''} aria-label="启用词典">
       <div class="dict-main">
         <div class="dict-name-line">
@@ -437,6 +478,7 @@ table,td,th{border-color:var(--doc-hr)!important}
           ${dict.hasMdd ? '<span class="badge">MDD</span>' : ''}
         </div>
         <div class="dict-meta"><span class="dot"></span><span class="meta-text"></span></div>
+        ${tagsLine}
       </div>
       <button class="dict-more" data-role="more" title="词典操作" aria-label="词典操作">${icon('more')}</button>
       <div class="dict-progress" hidden><span></span></div>
@@ -452,6 +494,13 @@ table,td,th{border-color:var(--doc-hr)!important}
     if (meta.title) row.querySelector('.dict-meta').title = meta.title;
     if (meta.cls === 'err' && dict.error) row.querySelector('.dict-meta').title = dict.error;
 
+    const tagNodes = row.querySelectorAll('.dict-tag');
+    tags.forEach((tag, index) => {
+      tagNodes[index].textContent = tag;
+    });
+    const handle = row.querySelector('[data-role="drag"]');
+    handle.draggable = state.dicts.length > 1 && !isDictFiltered();
+
     const live = state.indexing.get(dict.id);
     if (live) {
       const progress = row.querySelector('.dict-progress');
@@ -461,16 +510,35 @@ table,td,th{border-color:var(--doc-hr)!important}
     return row;
   }
 
+  function renderTagChips() {
+    const tags = [...new Set(state.dicts.flatMap((dict) => dict.tags || []))].sort((a, b) =>
+      a.localeCompare(b, 'zh-CN')
+    );
+    if (state.tagFilter && !tags.includes(state.tagFilter)) state.tagFilter = '';
+    el.dictTags.replaceChildren();
+    for (const [tag, label] of [['', '全部'], ...tags.map((tag) => [tag, tag])]) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tag-chip' + (state.tagFilter === tag ? ' active' : '');
+      chip.dataset.tag = tag;
+      chip.textContent = label;
+      el.dictTags.append(chip);
+    }
+  }
+
   function renderDicts() {
     const filter = state.filter.trim().toLowerCase();
-    const visible = filter
-      ? state.dicts.filter(
-          (dict) =>
-            (dict.name || '').toLowerCase().includes(filter) ||
-            (dict.path || '').toLowerCase().includes(filter)
-        )
-      : state.dicts;
+    const visible = state.dicts.filter((dict) => {
+      if (state.tagFilter && !(dict.tags || []).includes(state.tagFilter)) return false;
+      if (!filter) return true;
+      return (
+        (dict.name || '').toLowerCase().includes(filter) ||
+        (dict.path || '').toLowerCase().includes(filter) ||
+        (dict.tags || []).some((tag) => tag.toLowerCase().includes(filter))
+      );
+    });
 
+    renderTagChips();
     el.dictList.replaceChildren();
     if (!visible.length && state.dicts.length) {
       const empty = document.createElement('div');
@@ -735,7 +803,7 @@ table,td,th{border-color:var(--doc-hr)!important}
   async function fetchSuggestions(prefix) {
     const seq = ++state.suggestSeq;
     try {
-      const items = await invoke('suggest', { prefix });
+      const items = await invoke('suggest', { prefix, tags: activeTags() });
       if (seq !== state.suggestSeq) return;
       state.suggestions = Array.isArray(items) ? items : [];
       state.suggestionIndex = -1;
@@ -879,7 +947,7 @@ table,td,th{border-color:var(--doc-hr)!important}
 
     const started = performance.now();
     try {
-      const hits = await invoke('query', { word });
+      const hits = await invoke('query', { word, tags: activeTags() });
       if (seq !== state.querySeq) return;
       const elapsed = performance.now() - started;
       const list = Array.isArray(hits) ? hits : [];
@@ -1044,7 +1112,10 @@ table,td,th{border-color:var(--doc-hr)!important}
     el.noResults.hidden = false;
     el.noResults.replaceChildren();
 
-    const enabled = state.dicts.filter((dict) => dict.enabled).length;
+    const enabled = state.dicts.filter(
+      (dict) =>
+        dict.enabled && (!state.tagFilter || (dict.tags || []).includes(state.tagFilter))
+    ).length;
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div class="no-mark">${icon('search')}</div>
@@ -1068,7 +1139,9 @@ table,td,th{border-color:var(--doc-hr)!important}
       heading.textContent = `没有找到「${word}」`;
       paragraph.textContent =
         note ||
-        '换一个拼写试试，或者从下面的联想词中选择。部分词典可能仍在建立索引。';
+        (state.tagFilter
+          ? `当前标签「${state.tagFilter}」内没有命中，可切换标签或勾选更多词典。`
+          : '换一个拼写试试，或者从下面的联想词中选择。部分词典可能仍在建立索引。');
       actions.innerHTML = `
         <button class="link-btn" data-action="lucky">随机一个词</button>`;
     }
@@ -1083,7 +1156,7 @@ table,td,th{border-color:var(--doc-hr)!important}
     const prefix = Array.from(word).slice(0, 2).join('');
     if (!prefix) return;
     try {
-      const items = await invoke('suggest', { prefix });
+      const items = await invoke('suggest', { prefix, tags: activeTags() });
       if (state.query !== word) return;
       const filtered = (Array.isArray(items) ? items : [])
         .filter((item) => item.word.toLowerCase() !== word.toLowerCase())
@@ -1947,6 +2020,7 @@ table,td,th{border-color:var(--doc-hr)!important}
     const live = state.indexing.has(dict.id);
     openMenu(anchor, [
       { label: '重命名…', icon: 'book', action: () => renameDialog(dict) },
+      { label: '设置标签…', icon: 'filter', action: () => tagsDialog(dict) },
       live
         ? {
             label: '取消索引',
@@ -2111,6 +2185,82 @@ table,td,th{border-color:var(--doc-hr)!important}
     });
   }
 
+  function tagsDialog(dict) {
+    openModal('设置标签', ({ body, actions, close }) => {
+      body.innerHTML = `
+        <div class="field">
+          <label for="tags-input">标签（用逗号分隔，最多 8 个）</label>
+          <input id="tags-input" type="text" maxlength="200" autocomplete="off">
+        </div>
+        <p class="modal-note">标签用于侧栏快速筛选，例如「英汉」「牛津」「有声」。</p>
+      `;
+      const input = body.querySelector('#tags-input');
+      input.value = (dict.tags || []).join(', ');
+      actions.append(
+        modalButton('取消', 'btn-ghost', close),
+        modalButton('保存', 'btn-primary', async () => {
+          const tags = input.value
+            .split(/[,，]/)
+            .map((tag) => tag.trim())
+            .filter(Boolean);
+          try {
+            await invoke('set_dictionary_tags', { id: dict.id, tags });
+            close();
+            await refreshDicts();
+            toast('标签已保存', 'success', 1800);
+          } catch (error) {
+            toast(`保存标签失败：${error}`, 'error');
+          }
+        })
+      );
+    });
+  }
+
+  function tagsManagerDialog() {
+    openModal('标签管理', ({ body, actions, close }) => {
+      body.innerHTML = `
+        <p class="modal-note">用逗号分隔多个标签，最多 8 个。保存后可在侧栏按标签筛选。</p>
+        <div class="tag-manage-list"></div>
+      `;
+      const list = body.querySelector('.tag-manage-list');
+      for (const dict of state.dicts) {
+        const row = document.createElement('div');
+        row.className = 'tag-manage-row';
+        row.dataset.id = dict.id;
+        const label = document.createElement('span');
+        label.textContent = dict.name || '未命名词典';
+        label.title = dict.path || '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.maxLength = 200;
+        input.value = (dict.tags || []).join(', ');
+        row.append(label, input);
+        list.append(row);
+      }
+      actions.append(
+        modalButton('取消', 'btn-ghost', close),
+        modalButton('保存标签', 'btn-primary', async () => {
+          const rows = [...list.querySelectorAll('.tag-manage-row')];
+          try {
+            for (const row of rows) {
+              const tags = row
+                .querySelector('input')
+                .value.split(/[,，]/)
+                .map((tag) => tag.trim())
+                .filter(Boolean);
+              await invoke('set_dictionary_tags', { id: row.dataset.id, tags });
+            }
+            close();
+            await refreshDicts();
+            toast('标签已保存', 'success', 1800);
+          } catch (error) {
+            toast(`保存标签失败：${error}`, 'error');
+          }
+        })
+      );
+    });
+  }
+
   function removeDialog(dict) {
     openModal('删除词典', ({ body, actions, close }) => {
       body.innerHTML = `
@@ -2260,6 +2410,7 @@ table,td,th{border-color:var(--doc-hr)!important}
             toast(`无法打开目录：${error}`, 'error')
           );
         }),
+        modalButton('标签管理…', 'btn-ghost', tagsManagerDialog),
         modalButton('取消', 'btn-ghost', close),
         modalButton('保存设置', 'btn-primary', async () => {
           const next = {
@@ -2326,6 +2477,8 @@ table,td,th{border-color:var(--doc-hr)!important}
 
     el.navToggle.addEventListener('click', () => setNavPane(!state.navPaneOpen));
     el.navPaneClose.addEventListener('click', () => setNavPane(false));
+    el.sidebarToggle.addEventListener('click', () => setSidebar(!state.sidebarOpen));
+    el.sidebarReveal.addEventListener('click', () => setSidebar(true));
     el.historyBack.addEventListener('click', () => navigateHistory(-1));
     el.historyForward.addEventListener('click', () => navigateHistory(1));
     el.settingsBtn.addEventListener('click', settingsDialog);
@@ -2345,6 +2498,17 @@ table,td,th{border-color:var(--doc-hr)!important}
     el.dictFilter.addEventListener('input', () => {
       state.filter = el.dictFilter.value;
       renderDicts();
+    });
+
+    el.dictTags.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-tag]');
+      if (!chip) return;
+      const next = chip.dataset.tag || '';
+      if (next === state.tagFilter) return;
+      state.tagFilter = next;
+      renderDicts();
+      if (state.query) runSearch(state.query);
+      else if (el.searchInput.value.trim()) fetchSuggestions(el.searchInput.value.trim());
     });
 
     el.dictList.addEventListener('change', (event) => {
@@ -2378,6 +2542,10 @@ table,td,th{border-color:var(--doc-hr)!important}
       }
       if ((event.ctrlKey || event.altKey) && (key === 'arrowup' || key === 'arrowdown')) {
         event.preventDefault();
+        if (isDictFiltered()) {
+          toast('清除筛选后可调整顺序', 'info', 1800);
+          return;
+        }
         const id = row.dataset.id;
         moveDict(id, key === 'arrowup' ? -1 : 1);
         const position = state.dicts.findIndex((dict) => dict.id === id);
@@ -2388,8 +2556,9 @@ table,td,th{border-color:var(--doc-hr)!important}
     });
 
     el.dictList.addEventListener('dragstart', (event) => {
+      const handle = event.target.closest('[data-role="drag"]');
       const row = event.target.closest('.dict-row');
-      if (!row) {
+      if (!handle || !row || !handle.draggable) {
         event.preventDefault();
         return;
       }
@@ -2577,6 +2746,11 @@ table,td,th{border-color:var(--doc-hr)!important}
       setNavPane(!state.navPaneOpen);
       return;
     }
+    if (mod && !event.shiftKey && !event.altKey && key === 'b') {
+      event.preventDefault();
+      setSidebar(!state.sidebarOpen);
+      return;
+    }
     if (mod && !event.altKey && !event.shiftKey && (key === 'l' || key === 'k')) {
       event.preventDefault();
       focusSearch();
@@ -2632,7 +2806,7 @@ table,td,th{border-color:var(--doc-hr)!important}
 
   async function runLucky() {
     try {
-      const word = await invoke('lucky');
+      const word = await invoke('lucky', { tags: activeTags() });
       if (word) runSearch(word);
       else toast('没有可用的词典，请先添加并建立索引', 'warn', 3000);
     } catch (error) {
@@ -2691,8 +2865,10 @@ table,td,th{border-color:var(--doc-hr)!important}
     state.history = loadHistory();
     state.contentTheme = loadContentTheme();
     state.navPaneOpen = loadNavPane();
+    state.sidebarOpen = loadSidebar();
     applyTheme();
     setNavPane(state.navPaneOpen);
+    setSidebar(state.sidebarOpen);
     updateHistoryButtons();
     try {
       state.appInfo = await invoke('app_info');

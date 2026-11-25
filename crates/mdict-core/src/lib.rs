@@ -4,6 +4,7 @@
 //! compact read-only index and answers queries.  No SQL engine, no async
 //! runtime, no web framework.
 
+pub mod audio;
 pub mod error;
 pub mod index;
 pub mod mdd;

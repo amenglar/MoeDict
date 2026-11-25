@@ -47,6 +47,7 @@
         <svg class="icon"><use href="#i-filter"/></svg>
         <input id="dict-filter" type="search" placeholder="筛选词典" autocomplete="off" spellcheck="false" />
       </div>
+      <div class="dict-tags" id="dict-tags" role="group" aria-label="按标签筛选"></div>
 
       <div class="dict-list" id="dict-list" role="list" aria-label="词典列表"></div>
 
@@ -74,6 +75,9 @@
 
     <main id="main">
       <header class="topbar">
+        <button id="sidebar-toggle" class="icon-btn sidebar-toggle" title="隐藏词典侧栏 (Ctrl+B)" aria-label="隐藏词典侧栏" aria-pressed="true">
+          <svg class="icon"><use href="#i-back"/></svg>
+        </button>
         <div class="history-nav" role="group" aria-label="查询历史导航">
           <button id="history-back" class="icon-btn" title="上一条查询 (Alt+←)" aria-label="上一条查询" disabled>
             <svg class="icon"><use href="#i-back"/></svg>
@@ -135,6 +139,10 @@
       <div id="result-nav" class="result-nav" hidden></div>
     </aside>
   </div>
+
+  <button id="sidebar-reveal" class="sidebar-reveal" title="显示词典侧栏 (Ctrl+B)" aria-label="显示词典侧栏" hidden>
+    <svg class="icon"><use href="#i-forward"/></svg>
+  </button>
 
   <div id="drop-overlay" class="drop-overlay" hidden>
     <div class="drop-card">

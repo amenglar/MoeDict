@@ -44,18 +44,26 @@ pub fn list_dictionaries(state: State<'_, AppState>) -> Vec<DictionaryInfo> {
 }
 
 #[tauri::command]
-pub fn query(state: State<'_, AppState>, word: String) -> Vec<QueryHit> {
-    state.store.query(&word)
+pub fn query(state: State<'_, AppState>, word: String, tags: Option<Vec<String>>) -> Vec<QueryHit> {
+    state
+        .store
+        .query_with_tags(&word, tags.as_deref().unwrap_or(&[]))
 }
 
 #[tauri::command]
-pub fn suggest(state: State<'_, AppState>, prefix: String) -> Vec<Suggestion> {
-    state.store.suggest(&prefix)
+pub fn suggest(
+    state: State<'_, AppState>,
+    prefix: String,
+    tags: Option<Vec<String>>,
+) -> Vec<Suggestion> {
+    state
+        .store
+        .suggest_with_tags(&prefix, tags.as_deref().unwrap_or(&[]))
 }
 
 #[tauri::command]
-pub fn lucky(state: State<'_, AppState>) -> Option<String> {
-    state.store.lucky()
+pub fn lucky(state: State<'_, AppState>, tags: Option<Vec<String>>) -> Option<String> {
+    state.store.lucky_with_tags(tags.as_deref().unwrap_or(&[]))
 }
 
 #[tauri::command]
@@ -171,6 +179,15 @@ pub fn rename_dictionary(
     name: String,
 ) -> Result<(), String> {
     state.store.rename(&id, &name).map_err(stringify)
+}
+
+#[tauri::command]
+pub fn set_dictionary_tags(
+    state: State<'_, AppState>,
+    id: String,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    state.store.set_tags(&id, &tags).map_err(stringify)
 }
 
 #[tauri::command]

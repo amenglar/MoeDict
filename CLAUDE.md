@@ -45,6 +45,9 @@ Bundling: `cargo install tauri-cli --version "^2" --locked` then
   code units** for UTF-16/MDD (important: MDD keys are UTF-16LE).
 - `cursor.rs` — bounds-checked binary reader.
 - Supported: v1 best-effort, v2; encryption 0/1/2/3; compression none/LZO/zlib.
+- `audio.rs` — demuxes Ogg/Speex `.spx` resources and decodes them to 16-bit PCM
+  WAV with `oxideav-speex`. WebView2/Chromium cannot decode Speex, so dictionary
+  pronunciation audio is converted on demand; other formats pass through.
 
 ### Index (`crates/mdict-core/src/index/`)
 
@@ -72,14 +75,19 @@ record = key_off u64 | key_len u32 | def_off u64 | def_len u32 | raw_len u32 | f
 - add files/folders (recursive, max depth 8/5000 files), canonical paths,
   `ripemd256` id from the display path;
 - enable/rename/reorder/remove; orders are normalised to 0..n;
+- per-dictionary `tags` (up to 8, 24 chars each) with `set_tags`/`all_tags`,
+  exposed through `set_dictionary_tags` for sidebar filtering;
 - `build_index` streams entries into `IndexBuilder`, verifies the source
   size/mtime did not change, saves metadata and clears `last_error`;
 - status is computed against the **current file metadata**, so external edits
   show as `stale`;
 - `query` returns hits from every enabled dictionary in user order;
+  `query_with_tags`/`suggest_with_tags`/`lucky_with_tags` scope those to
+  dictionaries carrying the selected tag (still respecting enabled flags);
   `suggest` merges prefixes; `lucky` picks a plausible random headword;
 - `read_resource` resolves external files inside the dictionary directory
-  first, then MDD resources (lower-cased keys, path variants, split MDDs).
+  first, then MDD resources (lower-cased keys, path variants, split MDDs); Speex
+  audio is returned as `audio/wav`.
 
 Config is written atomically (`config.json.tmp` + rename). Temp files older than
 6 hours are cleaned at startup.
@@ -103,7 +111,7 @@ No bundler and no framework. `window.__TAURI__` is available because
 `app.withGlobalTauri = true`.
 
 - `app.js` — state, search/suggestions, dictionary CRUD UI, drag reorder,
-  settings/rename/remove modals, context menus, toasts, lazy iframes.
+  settings/rename/remove/tags modals, context menus, toasts, lazy iframes.
 - Rendering: each hit is sanitized with `DOMParser`, wrapped in a full HTML
   document and put in an `<iframe sandbox="allow-same-origin">` (scripts cannot
   run). CSS/JS/URL rewriting:
@@ -127,9 +135,13 @@ No bundler and no framework. `window.__TAURI__` is available because
   `scrollResultsTo`, which caps the animation at a fixed ~260ms. Do not put
   `scroll-behavior: smooth` on `.results`: the browser's distance-based
   animation takes seconds on long entries.
-- Dictionary order matters for result order. Filtering the sidebar disables
-  drag reorder.
-- UI state (history) lives in `localStorage`; settings live in the core config.
+- Dictionary order matters for result order. Drag reorder starts from the grip
+  handle in each row; filtering by text or tag disables drag reorder.
+- The sidebar can be collapsed with the topbar button or Ctrl+B; its state is
+  persisted in `localStorage`. Per-dictionary tags filter the list from chips
+  above it, and batch tag editing lives in 设置 → 标签管理.
+- UI state (history, nav pane, sidebar) lives in `localStorage`; settings and
+  dictionary tags live in the core config.
 
 ### Security / CSP
 

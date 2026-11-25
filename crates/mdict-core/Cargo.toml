@@ -17,6 +17,8 @@ ripemd = "0.1"
 fastrand = "2"
 log = "0.4"
 minilzo-rs = "0.6"
+oxideav-speex = "=0.0.10"
+oxideav-core = "=0.1.35"
 
 [dev-dependencies]
 tempfile = "3"

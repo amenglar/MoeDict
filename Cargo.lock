@@ -2252,6 +2252,8 @@ dependencies = [
  "log",
  "memmap2",
  "minilzo-rs",
+ "oxideav-core",
+ "oxideav-speex",
  "ripemd",
  "serde",
  "serde_json",
@@ -2678,6 +2680,26 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "oxideav-core"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f8d0295ab8f6482bb51419d9a89adcf145fa1e654b34d2566046134aed5c424"
+dependencies = [
+ "bytemuck",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "oxideav-speex"
+version = "0.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff2dc4e3957d399c39649695ed8dbb89909a42675542dce5b288e7e5e82af79f"
+dependencies = [
+ "oxideav-core",
 ]
 
 [[package]]
