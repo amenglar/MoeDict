@@ -51,6 +51,22 @@ pub fn query(state: State<'_, AppState>, word: String, tags: Option<Vec<String>>
 }
 
 #[tauri::command]
+pub fn query_nth(
+    state: State<'_, AppState>,
+    word: String,
+    nth: usize,
+    dict_id: Option<String>,
+    tags: Option<Vec<String>>,
+) -> Option<QueryHit> {
+    state.store.query_nth(
+        &word,
+        nth,
+        dict_id.as_deref(),
+        tags.as_deref().unwrap_or(&[]),
+    )
+}
+
+#[tauri::command]
 pub fn suggest(
     state: State<'_, AppState>,
     prefix: String,

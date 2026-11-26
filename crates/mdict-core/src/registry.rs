@@ -597,6 +597,38 @@ impl DictionaryStore {
         hits
     }
 
+    /// Look up the nth homonym (duplicate headword) in one dictionary.
+    pub fn query_nth(
+        &self,
+        word: &str,
+        nth: usize,
+        dict_id: Option<&str>,
+        tags: &[String],
+    ) -> Option<QueryHit> {
+        let word = word.trim();
+        if word.is_empty() {
+            return None;
+        }
+        for cfg in self.enabled_dicts_for(tags) {
+            if dict_id.is_some_and(|id| id != cfg.id) {
+                continue;
+            }
+            if let Ok(Some((headword, html))) = self
+                .open_index(&cfg.id)
+                .and_then(|index| index.exact_nth(word, nth))
+            {
+                return Some(QueryHit {
+                    dict_id: cfg.id.clone(),
+                    dict_name: cfg.name.clone(),
+                    headword,
+                    html,
+                    order: cfg.order,
+                });
+            }
+        }
+        None
+    }
+
     pub fn suggest(&self, prefix: &str) -> Vec<Suggestion> {
         self.suggest_with_tags(prefix, &[])
     }

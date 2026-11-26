@@ -187,6 +187,19 @@ impl IndexFile {
         let Some(index) = self.find_index(word)? else {
             return Ok(None);
         };
+        self.resolve_redirects(index).map(Some)
+    }
+
+    /// Case-insensitive exact lookup of the nth duplicate key (0-based).
+    /// Dictionaries such as Oxford store homonyms under the same headword.
+    pub fn exact_nth(&self, word: &str, nth: usize) -> Result<Option<(String, String)>> {
+        let Some(index) = self.find_index_nth(word, nth)? else {
+            return Ok(None);
+        };
+        self.resolve_redirects(index).map(Some)
+    }
+
+    fn resolve_redirects(&self, index: usize) -> Result<(String, String)> {
         let headword = self.key(index)?.to_string();
         let mut html = self.definition(index)?;
         let mut visited = vec![index];
@@ -205,7 +218,7 @@ impl IndexFile {
             visited.push(next);
             html = self.definition(next)?;
         }
-        Ok(Some((headword, html)))
+        Ok((headword, html))
     }
 
     fn find_index(&self, word: &str) -> Result<Option<usize>> {
@@ -230,6 +243,31 @@ impl IndexFile {
             index += 1;
         }
         Ok(fallback)
+    }
+
+    fn find_index_nth(&self, word: &str, nth: usize) -> Result<Option<usize>> {
+        let word = word.trim().trim_start_matches('\u{feff}').trim();
+        if word.is_empty() || self.is_empty() {
+            return Ok(None);
+        }
+        let lower = word.to_lowercase();
+        let mut index = self.lower_bound(&lower)?;
+        let mut exact = Vec::new();
+        let mut loose = Vec::new();
+        while index < self.len() && exact.len() + loose.len() < 256 {
+            let key = self.key(index)?;
+            if key.to_lowercase() != lower {
+                break;
+            }
+            if key == word {
+                exact.push(index);
+            } else {
+                loose.push(index);
+            }
+            index += 1;
+        }
+        let matches = if exact.is_empty() { loose } else { exact };
+        Ok(matches.get(nth).copied())
     }
 
     pub fn prefix(&self, prefix: &str, limit: usize) -> Result<Vec<String>> {

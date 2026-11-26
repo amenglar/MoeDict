@@ -54,6 +54,7 @@ pub fn run() {
             commands::rename_dictionary,
             commands::set_dictionary_tags,
             commands::reorder_dictionaries,
+            commands::query_nth,
             commands::reindex_dictionary,
             commands::reindex_all,
             commands::cancel_index,

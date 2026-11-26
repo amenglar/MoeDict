@@ -92,6 +92,7 @@
     querySeq: 0,
     suggestSeq: 0,
     frameObservers: new Set(),
+    suppressFocusSuggest: false,
   };
 
   let suggestTimer = null;
@@ -789,6 +790,7 @@ table,td,th{border-color:var(--doc-hr)!important}
   }
 
   function onSearchInput() {
+    state.suppressFocusSuggest = false;
     toggleClearBtn();
     const value = el.searchInput.value.trim();
     clearTimeout(suggestTimer);
@@ -916,11 +918,12 @@ table,td,th{border-color:var(--doc-hr)!important}
     }
   }
 
-  async function runSearch(rawWord, rawAnchor = '', rawDictId = '') {
+  async function runSearch(rawWord, rawAnchor = '', rawDictId = '', rawNth = 0) {
     const word = String(rawWord ?? '').trim();
     if (!word) return;
     const anchor = String(rawAnchor || '');
     const anchorDict = String(rawDictId || '');
+    const nth = Number(rawNth) || 0;
 
     clearTimeout(suggestTimer);
     state.suggestSeq += 1;
@@ -947,7 +950,28 @@ table,td,th{border-color:var(--doc-hr)!important}
 
     const started = performance.now();
     try {
-      const hits = await invoke('query', { word, tags: activeTags() });
+      let hits;
+      if (nth > 0) {
+        const hit = await invoke('query_nth', {
+          word,
+          nth,
+          dictId: anchorDict || null,
+          tags: activeTags(),
+        });
+        hits = hit
+          ? [
+              {
+                dictId: hit.dictId,
+                dictName: hit.dictName,
+                headword: `${hit.headword || word} ${nth + 1}`,
+                html: hit.html,
+                order: hit.order,
+              },
+            ]
+          : [];
+      } else {
+        hits = await invoke('query', { word, tags: activeTags() });
+      }
       if (seq !== state.querySeq) return;
       const elapsed = performance.now() - started;
       const list = Array.isArray(hits) ? hits : [];
@@ -963,6 +987,7 @@ table,td,th{border-color:var(--doc-hr)!important}
         // Keep the box ready for the next word: select the query when the
         // search was issued from the input itself.
         if (document.activeElement === el.searchInput && el.searchInput.value === word) {
+          state.suppressFocusSuggest = true;
           el.searchInput.select();
         }
       }
@@ -1381,7 +1406,12 @@ table,td,th{border-color:var(--doc-hr)!important}
             scrollToEntryAnchor(card, anchor);
             return;
           }
-          runSearch(word, anchor, target.dataset?.entryDict || '');
+          runSearch(
+            word,
+            anchor,
+            target.dataset?.entryDict || '',
+            Number(target.dataset?.entryNth || 0)
+          );
           return;
         }
 
@@ -1777,6 +1807,11 @@ table,td,th{border-color:var(--doc-hr)!important}
         link.dataset.entry = word;
         if (anchor) link.dataset.entryAnchor = anchor;
         link.dataset.entryDict = dictId;
+        const xhm = link.closest('.xr')?.querySelector('.xhm');
+        const homonym = Number.parseInt((xhm?.textContent || '').trim(), 10);
+        if (Number.isFinite(homonym) && homonym > 0) {
+          link.dataset.entryNth = String(homonym - 1);
+        }
         link.setAttribute('href', '#');
         return;
       }
@@ -2468,9 +2503,13 @@ table,td,th{border-color:var(--doc-hr)!important}
     el.searchInput.addEventListener('input', onSearchInput);
     el.searchInput.addEventListener('keydown', onSearchKeydown);
     el.searchInput.addEventListener('focus', () => {
+      if (state.suppressFocusSuggest) return;
       if (el.searchInput.value.trim() && el.suggestions.hidden) {
         fetchSuggestions(el.searchInput.value.trim());
       }
+    });
+    el.searchInput.addEventListener('pointerdown', () => {
+      state.suppressFocusSuggest = false;
     });
 
     el.clearBtn.addEventListener('click', resetToWelcome);
@@ -2707,6 +2746,13 @@ table,td,th{border-color:var(--doc-hr)!important}
         .filter(Boolean);
       if (paths.length) addPaths(paths);
       else toast('请使用“添加 MDX 文件”按钮选择词典', 'warn', 3000);
+    });
+
+    window.addEventListener('focus', () => {
+      if (!state.suppressFocusSuggest) return;
+      if (document.activeElement !== el.searchInput) return;
+      hideSuggestions();
+      el.searchInput.select();
     });
 
     window.addEventListener('unhandledrejection', (event) => {

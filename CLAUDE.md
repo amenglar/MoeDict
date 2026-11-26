@@ -104,6 +104,8 @@ Config is written atomically (`config.json.tmp` + rename). Temp files older than
 - `protocol.rs` — `mdict://localhost/<dict-id>/<resource>` on Linux/macOS and
   `http://mdict.localhost/<dict-id>/<resource>` on Windows. Adds CORS and
   cache headers; 404/500 otherwise.
+- WebView2 memory measurements and the `additionalBrowserArgs` tradeoff: see
+  `docs/webview-memory-optimization.md`.
 
 ### Frontend (`ui/`)
 
