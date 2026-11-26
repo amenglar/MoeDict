@@ -2244,7 +2244,7 @@ dependencies = [
 
 [[package]]
 name = "mdict-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "encoding",
  "fastrand",
@@ -2334,7 +2334,7 @@ dependencies = [
 
 [[package]]
 name = "moedict"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "log",
  "mdict-core",
